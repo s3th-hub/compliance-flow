@@ -1,0 +1,40 @@
+/* assets/css/style.css */
+
+:root {
+    --sidebar-width: 240px;
+    --color-success: #198754;
+    --color-danger:  #dc3545;
+    --color-warning: #ffc107;
+}
+
+body { font-family: 'Segoe UI', sans-serif; }
+
+#sidebar .nav-link.active {
+    background-color: #198754;
+    color: #fff !important;
+}
+#sidebar .nav-link:hover:not(.active) {
+    background-color: rgba(255,255,255,.1);
+}
+
+.stat-card {
+    border-left: 4px solid;
+    border-radius: 8px;
+}
+.stat-card.green  { border-color: #198754; }
+.stat-card.red    { border-color: #dc3545; }
+.stat-card.orange { border-color: #fd7e14; }
+.stat-card.blue   { border-color: #0d6efd; }
+
+.badge-active          { background-color: #198754; }
+.badge-expired         { background-color: #dc3545; }
+.badge-pending_renewal { background-color: #fd7e14; }
+
+.expiry-danger  { color: #dc3545; font-weight: 600; }
+.expiry-warning { color: #fd7e14; font-weight: 600; }
+.expiry-ok      { color: #198754; }
+
+@media print {
+    #sidebar, .no-print { display: none !important; }
+    #page-content { margin: 0 !important; }
+}
