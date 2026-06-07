@@ -8,7 +8,7 @@ $db = db();
 $user = current_user();
 $error = $success = '';
 
-// ── HANDLE UPLOAD FROM THIS PAGE ─────────────────────────────
+// ── HANDLE UPLOAD ─────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['document'])) {
     $compliance_id = (int) ($_POST['compliance_id'] ?? 0);
     $file = $_FILES['document'];
@@ -43,7 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['document'])) {
             $stmt->bind_param('isssii', $compliance_id, $orig, $stored_name, $type, $size, $uid);
             $stmt->execute();
             $stmt->close();
-            $success = 'Document uploaded successfully.';
+            header('Location: ' . BASE_URL . '/documents/index.php?success=uploaded');
+            exit;
         } else {
             $error = 'Failed to move uploaded file. Check folder permissions.';
         }
@@ -72,31 +73,36 @@ if (isset($_GET['del'])) {
 }
 
 if (isset($_GET['success'])) {
-    $success = $_GET['success'] === 'deleted' ? 'Document deleted.' : 'Document uploaded.';
+    $success = $_GET['success'] === 'deleted' ? 'Document deleted.' : 'Document uploaded successfully.';
 }
 
-// ── LOAD ALL DOCUMENTS ────────────────────────────────────────
-$result = $db->query(
-    "SELECT d.id, d.original_name, d.stored_name, d.file_type, d.file_size,
+// ── LOAD DOCUMENTS ────────────────────────────────────────────
+$stmt = $db->prepare(
+    'SELECT d.id, d.original_name, d.stored_name, d.file_type, d.file_size,
             d.uploaded_at, d.compliance_id,
-            cr.title AS compliance_title, cr.status AS cr_status,
+            cr.title AS compliance_title,
             b.business_name,
             u.full_name AS uploader
      FROM documents d
      JOIN compliance_records cr ON cr.id = d.compliance_id
      JOIN businesses b ON b.id = cr.business_id
      JOIN users u ON u.id = d.uploaded_by
-     ORDER BY d.uploaded_at DESC"
+     ORDER BY d.uploaded_at DESC'
 );
-$documents = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+$stmt->execute();
+$documents = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
 
-// ── LOAD BUSINESSES + COMPLIANCE RECORDS FOR UPLOAD FORM ─────
-$businesses = $db->query("SELECT id, business_name FROM businesses ORDER BY business_name")->fetch_all(MYSQLI_ASSOC);
+// ── LOAD BUSINESSES + RECORDS FOR MODAL ──────────────────────
+$businesses = $db->query(
+    'SELECT id, business_name FROM businesses ORDER BY business_name'
+)->fetch_all(MYSQLI_ASSOC);
+
 $all_records = $db->query(
-    "SELECT cr.id, cr.title, b.business_name, cr.business_id
+    'SELECT cr.id, cr.title, cr.business_id
      FROM compliance_records cr
      JOIN businesses b ON b.id = cr.business_id
-     ORDER BY b.business_name, cr.title"
+     ORDER BY b.business_name, cr.title'
 )->fetch_all(MYSQLI_ASSOC);
 
 $pageTitle = 'All Documents';
@@ -104,7 +110,9 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="fw-bold mb-0"><i class="bi bi-folder2-open me-2"></i>All Documents</h4>
+    <h4 class="fw-bold mb-0">
+        <i class="bi bi-folder2-open me-2"></i>All Documents
+    </h4>
     <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#uploadModal">
         <i class="bi bi-upload me-1"></i> Upload Document
     </button>
@@ -117,7 +125,6 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="alert alert-success py-2"><?= htmlspecialchars($success) ?></div>
 <?php endif; ?>
 
-<!-- Documents table -->
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -140,29 +147,31 @@ require_once __DIR__ . '/../includes/header.php';
                             <td colspan="8" class="text-center text-muted py-5">
                                 <i class="bi bi-folder2 d-block mb-2" style="font-size:2rem"></i>
                                 No documents uploaded yet.
-                                <a href="#" data-bs-toggle="modal" data-bs-target="#uploadModal">Upload one now.</a>
+                                <a href="#" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                                    Upload one now.
+                                </a>
                             </td>
                         </tr>
                     <?php else: ?>
-                        <?php foreach ($documents as $i => $d): ?>
+                        <?php foreach ($documents as $i => $doc): ?>
                             <tr>
                                 <td class="text-muted"><?= $i + 1 ?></td>
                                 <td>
                                     <i
-                                        class="bi bi-<?= str_contains($d['file_type'], 'pdf') ? 'file-earmark-pdf text-danger' : 'file-earmark-image text-primary' ?> me-1"></i>
-                                    <span style="font-size:.87rem"><?= htmlspecialchars($d['original_name']) ?></span>
+                                        class="bi bi-<?= (strpos($doc['file_type'], 'pdf') !== false) ? 'file-earmark-pdf text-danger' : 'file-earmark-image text-primary' ?> me-1"></i>
+                                    <?= htmlspecialchars($doc['original_name']) ?>
                                 </td>
-                                <td style="font-size:.85rem"><?= htmlspecialchars($d['compliance_title']) ?></td>
-                                <td style="font-size:.85rem"><?= htmlspecialchars($d['business_name']) ?></td>
-                                <td style="font-size:.83rem"><?= round($d['file_size'] / 1024) ?> KB</td>
-                                <td style="font-size:.83rem"><?= htmlspecialchars($d['uploader']) ?></td>
-                                <td style="font-size:.83rem"><?= date('d M Y', strtotime($d['uploaded_at'])) ?></td>
+                                <td><?= htmlspecialchars($doc['compliance_title']) ?></td>
+                                <td><?= htmlspecialchars($doc['business_name']) ?></td>
+                                <td><?= round($doc['file_size'] / 1024) ?> KB</td>
+                                <td><?= htmlspecialchars($doc['uploader']) ?></td>
+                                <td><?= date('d M Y', strtotime($doc['uploaded_at'])) ?></td>
                                 <td>
-                                    <a href="<?= BASE_URL ?>/documents/view.php?id=<?= $d['id'] ?>" target="_blank"
+                                    <a href="<?= BASE_URL ?>/documents/view.php?id=<?= $doc['id'] ?>" target="_blank"
                                         class="btn btn-sm btn-outline-primary" title="View">
                                         <i class="bi bi-eye"></i>
                                     </a>
-                                    <a href="?del=<?= $d['id'] ?>" onclick="return confirm('Delete this document?')"
+                                    <a href="?del=<?= $doc['id'] ?>" onclick="return confirm('Delete this document?')"
                                         class="btn btn-sm btn-outline-danger" title="Delete">
                                         <i class="bi bi-trash"></i>
                                     </a>
@@ -176,43 +185,45 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
-<!-- ── UPLOAD MODAL ──────────────────────────────────────────── -->
+<!-- UPLOAD MODAL -->
 <div class="modal fade" id="uploadModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="POST" enctype="multipart/form-data">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload Document</h5>
+                    <h5 class="modal-title">
+                        <i class="bi bi-upload me-2"></i>Upload Document
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Business</label>
-                        <select id="bizSelect" class="form-select" required>
+                        <select id="bizSelect" class="form-select">
                             <option value="">— Select business —</option>
                             <?php foreach ($businesses as $biz): ?>
-                                <option value="<?= $biz['id'] ?>"><?= htmlspecialchars($biz['business_name']) ?></option>
+                                <option value="<?= $biz['id'] ?>">
+                                    <?= htmlspecialchars($biz['business_name']) ?>
+                                </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
-
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Compliance Record</label>
                         <select name="compliance_id" id="recordSelect" class="form-select" required>
                             <option value="">— Select business first —</option>
                         </select>
                     </div>
-
                     <div class="mb-3">
                         <label class="form-label fw-semibold">File</label>
                         <input type="file" name="document" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
                         <div class="form-text">PDF, JPG, PNG — max <?= UPLOAD_MAX_MB ?>MB</div>
                     </div>
-
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-upload me-1"></i>Upload
                     </button>
@@ -222,15 +233,12 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
-<!-- Filter records by selected business -->
 <script>
     const allRecords = <?= json_encode($all_records) ?>;
-
     document.getElementById('bizSelect').addEventListener('change', function () {
-        const bizId = parseInt(this.value);
+        const bizId = this.value;
         const select = document.getElementById('recordSelect');
         const filtered = allRecords.filter(r => r.business_id == bizId);
-
         select.innerHTML = '<option value="">— Select record —</option>';
         filtered.forEach(r => {
             const opt = document.createElement('option');
